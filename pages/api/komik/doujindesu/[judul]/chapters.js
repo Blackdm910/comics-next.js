@@ -1,4 +1,4 @@
-// pages/api/komik/[judul]/chapters.js
+// pages/api/komik/doujindesu/[judul]/chapters.js
 import { Doujindesu } from '@/f/index.js';
 
 export default async function handler(req, res) {
@@ -7,29 +7,25 @@ export default async function handler(req, res) {
   if (req.method === 'GET') {
     try {
       // Decode judul yang diterima sebagai parameter
-      const decodedJudul =
-        decodeURIComponent(judul).trim();
+      const decodedJudul = decodeURIComponent(judul).trim();
 
       // Validasi input judul
       if (!decodedJudul) {
         return res.status(400).json({
-          message:
-            'Judul komik tidak valid atau kosong.',
+          message: 'Judul komik tidak valid atau kosong.',
         });
       }
 
-      console.log(
-        `Mendapatkan chapter untuk judul: ${decodedJudul}`,
-      );
+      // console.log(
+      //   `Mendapatkan chapter untuk judul: ${decodedJudul}`,
+      // );
 
       // Ambil data chapters dari fungsi getChapters
-      const chapters =
-        await Doujindesu.getChapters(
-          decodedJudul,
-        );
+      const chapters = await Doujindesu.getChapters(decodedJudul);
 
       // Jika tidak ditemukan chapter
       if (!chapters || chapters.length === 0) {
+        console.log(chapters);
         return res.status(404).json({
           message: `Tidak ditemukan chapter untuk komik "${decodedJudul}".`,
         });
@@ -39,10 +35,7 @@ export default async function handler(req, res) {
       return res.status(200).json(chapters);
     } catch (error) {
       // Tangani error seperti URL encoding yang tidak valid atau error lainnya
-      console.error(
-        'Error scraping komik chapters:',
-        error.message || error,
-      );
+      console.error('Error scraping komik chapters:', error.message || error);
 
       if (error instanceof URIError) {
         return res.status(400).json({
@@ -51,14 +44,11 @@ export default async function handler(req, res) {
       }
 
       return res.status(500).json({
-        message:
-          'Gagal mendapatkan daftar chapter.',
+        message: 'Gagal mendapatkan daftar chapter.',
       });
     }
   } else {
     // Jika metode selain GET, kembalikan status error 405
-    return res
-      .status(405)
-      .json({ message: 'Method Not Allowed' });
+    return res.status(405).json({ message: 'Method Not Allowed' });
   }
 }

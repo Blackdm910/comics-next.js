@@ -1,162 +1,137 @@
-'use client'
+'use client';
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import Image from 'next/image';
-import Pagination from '@/app/components/Pagination';
 import { useRouter } from 'next/navigation';
-import debounce from 'lodash.debounce';
+import debounce from 'lodash';
+import SkeletonLoader from '@/components/ui/SkeletonLoader';
+import Card from '@/components/ui/Card';
+import Pagination from '@/components/ui/Pagination';
+import Image from 'next/image';
 
 const KomikList = () => {
   const [komikList, setKomikList] = useState([]);
   const [pagination, setPagination] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const router = useRouter();
 
-  const fetchKomik = useCallback(async (page) => {
+  // Gabungkan fetch komik dan search menjadi satu fungsi
+  const fetchKomik = useCallback(async (page = 1, query = '') => {
     setIsLoading(true);
-    setError(null);
-    try {
-      const response = await fetch(`/api/komik/doujindesu?page=${page}`);
-      const data = await response.json();
-      setKomikList(data.komikList || []);
-      setPagination(data.pagination || []);
-    } catch (error) {
-      setError(error.message);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+    const url = query
+      ? `/api/komik/doujindesu/search/${query}/${page}` // Pencarian
+      : `/api/komik/doujindesu?page=${page}`; // Daftar komik
 
-  const fetchSearchResults = useCallback(async (query) => {
-    if (query) {
-      try {
-        const response = await fetch(`/api/komik/doujindesu/search/${query}/1`);
-        const data = await response.json();
-        setSearchResults(data.comics || []);
-      } catch (error) {
-        setError(error.message);
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
-    } else {
-      setSearchResults([]);
-    }
-  }, []);
 
-  const debouncedFetchSearchResults = useMemo(() => debounce(fetchSearchResults, 500), [fetchSearchResults]);
-
-  useEffect(() => {
-    fetchKomik(currentPage);
-  }, [currentPage]);
-
-  useEffect(() => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, [currentPage]);
-
-  const handleSearchSubmit = (event) => {
-    if (event.key === 'Enter') {
-      window.location.href = `/search/${searchQuery}`;
-    }
-  };
-
-  const handleKomikClick = async (komikLink) => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      await router.push(`/komik/doujindesu/${komikLink.replace(/https:\/\/[^]+\/komik\/([^]+)\//, '$1')}/chapters`);
+      const data = await response.json();
+      if (query) {
+        setSearchResults(data.comics || []);
+      } else {
+        setKomikList(data.komikList || []);
+        setPagination(data.pagination || []);
+      }
     } catch (error) {
-      setError(error.message);
+      console.error('Error fetching data:', error);
+      if (query) {
+        setSearchResults([]); // Clear search results on error
+      } else {
+        setKomikList([]);
+        setPagination([]);
+      }
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
-  const SkeletonLoader = () => (
-    <div className="bg-gray-700 p-4 rounded-lg flex flex-col items-center justify-center">
-      <div className="w-full aspect-[3/4] bg-gray-600 rounded-lg mb-3 animate-pulse"></div>
-      <div className="w-full h-6 bg-gray-600 rounded mb-2 animate-pulse"></div>
-      <div className="w-3/4 h-6 bg-gray-600 rounded animate-pulse"></div>
-    </div>
+  const debouncedFetchKomik = useMemo(
+    () => debounce(fetchKomik, 500),
+    [fetchKomik],
   );
 
+  useEffect(() => {
+    fetchKomik(currentPage); // Load komik list pertama kali
+  }, [currentPage, fetchKomik]);
+
+  useEffect(() => {
+    router.prefetch(`/komik/doujindesu`);
+  }, [router]);
+
+  const handleSearchSubmit = (event) => {
+    event.preventDefault();
+    if (searchQuery) {
+      router.push(`/search/${searchQuery}`);
+      fetchKomik(1, searchQuery); // Menjalankan pencarian saat submit
+    }
+  };
+
+  const handleKomikClick = (komikLink) => {
+    const komikSlug = komikLink.replace(
+      /https:\/\/[^]+\/manga\/([^]+)\//,
+      '$1',
+    );
+    router.push(`/komik/doujindesu/${komikSlug}/chapters`);
+  };
+
   return (
-    <div className="min-h-screen flex flex-col items-center bg-gray-800 text-white p-5">
-      {/* Search Bar */}
-      <div className="w-full max-w-lg mb-5">
+    <div className='flex min-h-screen flex-col items-center bg-gray-800 p-5 text-white'>
+      <form onSubmit={handleSearchSubmit} className='mb-5 w-full max-w-lg'>
         <input
-          type="text"
-          placeholder="Cari Komik"
+          type='text'
+          placeholder='Cari Komik'
           value={searchQuery}
           onChange={(e) => {
             setSearchQuery(e.target.value);
-            debouncedFetchSearchResults(e.target.value);
+            debouncedFetchKomik(currentPage, e.target.value); // Panggil fetch dengan query pencarian
           }}
-          onKeyPress={handleSearchSubmit}
-          className="w-full p-3 rounded-lg bg-gray-700 text-white outline-none placeholder-gray-400"
+          className='w-full rounded-lg bg-gray-700 p-3 text-white placeholder-gray-400 outline-none'
         />
         {searchQuery && (
-          <div className="absolute z-50 max-h-52 overflow-y-auto bg-gray-700 w-full mt-2 p-3 rounded-lg shadow-lg">
-            <ul className="space-y-2">
-              {searchResults
-                .slice(0, 5)
-                .map((komik) => (
-                  <li
-                    key={komik.link}
-                    onClick={() => handleKomikClick(komik.link)}
-                    className="flex items-center gap-3 p-2 rounded-lg cursor-pointer hover:bg-gray-600"
-                  >
-                    <Image
-                      src={komik.image}
-                      alt={komik.title}
-                      width={48}
-                      height={48}
-                      className="rounded-lg"
-                    />
-                    <span className="text-sm">{komik.title}</span>
-                  </li>
-                ))}
+          <div className='absolute z-50 mt-2 max-h-52 w-full overflow-y-auto rounded-lg bg-gray-700 p-3 shadow-lg'>
+            <ul>
+              {searchResults.slice(0, 5).map((komik) => (
+                <li
+                  key={komik.link}
+                  onClick={() => handleKomikClick(komik.link)}
+                  className='flex cursor-pointer items-center gap-3 rounded-lg p-2 hover:bg-gray-600'
+                >
+                  <Image
+                    src={komik.image}
+                    alt={komik.title}
+                    width={48}
+                    height={48}
+                    className='rounded-lg'
+                  />
+                  <span className='text-sm'>{komik.title}</span>
+                </li>
+              ))}
             </ul>
           </div>
         )}
-      </div>
+      </form>
 
-      {/* Komik Grid */}
-      <div className="grid grid-cols-4 lg:grid-cols-5 gap-1 w-full mt-5">
+      <div className='mt-5 grid w-full grid-cols-4 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5'>
         {isLoading
           ? Array.from({ length: 12 }).map((_, index) => (
               <SkeletonLoader key={index} />
             ))
-          : error
-          ? <div className="text-red-500">{error}</div>
-          : komikList.map((komik) => (
-              <div
-                key={komik.judul}
-                className="bg-gray-700 p-2 rounded-lg flex flex-col items-center justify-center"
-                onClick={() => handleKomikClick(komik.link)}
-              >
-                <Image
-                  src={komik.thumbnail}
-                  alt={komik.judul}
-                  width={200}
-                  height={250}
-                  loading="lazy"
-                  className="w-full aspect-[3/4] bg-gray-600 rounded-lg mb-3"
-                />
-                <h3 className="text-sm font-semibold text-center line-clamp-2">
-                  {komik.judul}
-                </h3>
-              </div>
+          : (searchQuery ? searchResults : komikList).map((komik) => (
+              <Card key={komik.link} komik={komik} onClick={handleKomikClick} />
             ))}
       </div>
 
-      {/* Pagination */}
-      <Pagination
-        currentPage={currentPage}
-        pagination={pagination}
-        setCurrentPage={setCurrentPage}
-        disabled={isLoading}
-      />
+      {!searchQuery && pagination.length > 0 && !isLoading && (
+        <Pagination
+          currentPage={currentPage}
+          pagination={pagination}
+          setCurrentPage={setCurrentPage}
+        />
+      )}
     </div>
   );
 };
